@@ -7,8 +7,8 @@ from typing import Any
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import Ridge
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import GridSearchCV, KFold, cross_validate, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -31,6 +31,71 @@ def build_regressor(features: pd.DataFrame, tune: bool = True) -> Any:
     return estimator
 
 
+def compare_regressors(
+    data_path: str | Path = "data/winequality-red.csv",
+    folds: int = 5,
+) -> dict[str, dict[str, float]]:
+    """Compare baseline regressors with shuffled, reproducible K-fold CV."""
+    frame = load_data(data_path)
+    X, y = split_features_target(frame)
+    models = {
+        "LinearRegression": Pipeline([("preprocessor", make_preprocessor(X)), ("model", LinearRegression())]),
+        "Ridge": Pipeline([("preprocessor", make_preprocessor(X)), ("model", Ridge(alpha=1.0))]),
+        "RandomForestRegressor": Pipeline([
+            ("preprocessor", make_preprocessor(X)),
+            ("model", RandomForestRegressor(n_estimators=250, random_state=42, n_jobs=-1)),
+        ]),
+        "GradientBoostingRegressor": Pipeline([
+            ("preprocessor", make_preprocessor(X)),
+            ("model", GradientBoostingRegressor(random_state=42, n_estimators=150)),
+        ]),
+    }
+    cv = KFold(folds, shuffle=True, random_state=42)
+    scores: dict[str, dict[str, float]] = {}
+    for name, model in models.items():
+        result = cross_validate(
+            model, X, y, cv=cv,
+            scoring=("neg_mean_absolute_error", "neg_mean_squared_error", "neg_root_mean_squared_error", "r2"),
+        )
+        scores[name] = {
+            "mae": float(-result["test_neg_mean_absolute_error"].mean()),
+            "mse": float(-result["test_neg_mean_squared_error"].mean()),
+            "rmse": float(-result["test_neg_root_mean_squared_error"].mean()),
+            "r2": float(result["test_r2"].mean()),
+        }
+    return scores
+
+
+def build_classifier(features: pd.DataFrame) -> Pipeline:
+    """Build an optional classifier for the dataset's discrete quality labels."""
+    return Pipeline(
+        [
+            ("preprocessor", make_preprocessor(features)),
+            ("model", RandomForestClassifier(n_estimators=250, random_state=42, n_jobs=-1)),
+        ]
+    )
+
+
+def train_classifier(data_path: str | Path = "data/winequality-red.csv") -> tuple[Any, dict[str, float]]:
+    """Train an optional classifier and report accuracy and macro-F1."""
+    from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, f1_score
+
+    frame = load_data(data_path)
+    X, y = split_features_target(frame)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    estimator = build_classifier(X_train).fit(X_train, y_train)
+    predicted = estimator.predict(X_test)
+    return estimator, {
+        "accuracy": float(accuracy_score(y_test, predicted)),
+        "precision_macro": float(precision_score(y_test, predicted, average="macro", zero_division=0)),
+        "recall_macro": float(recall_score(y_test, predicted, average="macro", zero_division=0)),
+        "f1_macro": float(f1_score(y_test, predicted, average="macro", zero_division=0)),
+        "confusion_matrix": confusion_matrix(y_test, predicted).tolist(),
+    }
+
+
 def train(
     data_path: str | Path = "data/winequality-red.csv",
     model_path: str | Path = "models/wine_quality_regressor.joblib",
@@ -48,6 +113,7 @@ def train(
     pred = estimator.predict(X_test)
     metrics = {
         "mae": float(mean_absolute_error(y_test, pred)),
+        "mse": float(mean_squared_error(y_test, pred)),
         "rmse": float(mean_squared_error(y_test, pred) ** 0.5),
         "r2": float(r2_score(y_test, pred)),
     }
@@ -64,16 +130,17 @@ def cross_validate_model(data_path: str | Path = "data/winequality-red.csv", fol
     result = cross_validate(
         build_regressor(X, tune=False), X, y,
         cv=KFold(folds, shuffle=True, random_state=42),
-        scoring=("neg_mean_absolute_error", "neg_root_mean_squared_error", "r2"),
+        scoring=("neg_mean_absolute_error", "neg_mean_squared_error", "neg_root_mean_squared_error", "r2"),
     )
     return {
         "cv_mae": float(-result["test_neg_mean_absolute_error"].mean()),
+        "cv_mse": float(-result["test_neg_mean_squared_error"].mean()),
         "cv_rmse": float(-result["test_neg_root_mean_squared_error"].mean()),
         "cv_r2": float(result["test_r2"].mean()),
     }
 
 
-def load_model(model_path: str | Path = "models/wine_quality_regressor.joblib") -> Any:
+def load_model(model_path: str | Path = "models/red_wine_quality_model.joblib") -> Any:
     return joblib.load(model_path)
 
 

@@ -6,15 +6,20 @@ from red_wine_quality.model import load_model, predict
 st.set_page_config(page_title="Red Wine Quality", page_icon="🍷")
 st.title("🍷 Red Wine Quality Predictor")
 st.caption("Predictions use a persisted scikit-learn regression pipeline.")
+st.info(
+    "This is an Estimate from physicochemical measurements, not a "
+    "laboratory or purchasing recommendation. Quality scores are approximate "
+    "and reflect the training dataset's sensory labels."
+)
 
 @st.cache_resource
 def get_model():
-    return load_model("models/wine_quality_regressor.joblib")
+    return load_model("models/red_wine_quality_model.joblib")
 
 try:
     model = get_model()
 except FileNotFoundError:
-    st.error("Model not found. Run `python train.py` first.")
+    st.error("Model not found. Run `python -m src.train` first.")
     st.stop()
 
 defaults = {

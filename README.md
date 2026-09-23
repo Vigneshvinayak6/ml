@@ -16,31 +16,54 @@ to `data/winequality-red.csv` (ignored by git).
 
 ```bash
 python -m pip install -r requirements.txt
-python train.py                 # tuned random forest + holdout and 5-fold CV
+python -m src.train              # tuned random forest + holdout and 5-fold CV
+python -m src.evaluate           # evaluate models/red_wine_quality_model.joblib
+python -m src.predict            # prediction smoke test; --input features.csv is supported
 python scripts/eda.py           # reports/figures/*.png
 streamlit run app.py
 pytest -q
 ```
 
-Use `python train.py --no-tune` for a fast Ridge baseline. The trained
-pipeline is persisted to `models/wine_quality_regressor.joblib` (also ignored).
-The primary task is regression; the numeric score can be rounded/clipped by a
-consumer when a discrete classification interpretation is required.
+Use `python -m src.train --no-tune` for a fast Ridge baseline. The trained
+pipeline is persisted to `models/red_wine_quality_model.joblib` (ignored).
+The primary task is regression; an optional Random Forest classifier is
+available via `red_wine_quality.model.train_classifier`. Training includes
+holdout evaluation, five-fold CV, and modest Random Forest hyperparameter
+tuning.
 
 ## Design
 
-`red_wine_quality/data.py` handles download and schema validation;
-`preprocessing.py` builds a leakage-safe imputation/scaling pipeline; and
-`model.py` provides tuning, evaluation, cross-validation, persistence, and
-prediction APIs. `scripts/eda.py` generates a target histogram and correlation
-heatmap. The Streamlit app exposes all 11 physicochemical inputs.
+The required `src/` modules provide stable CLI/API entry points:
+`data_loader.py`, `preprocessing.py`, `train.py`, `evaluate.py`, and
+`predict.py`. Reusable implementation lives in `red_wine_quality/`.
+`notebooks/red_wine_quality_analysis.ipynb` documents interactive analysis;
+`scripts/eda.py` generates distributions, boxplots, requested feature
+relationships, a correlation heatmap, feature importance, and evaluation
+plots. The
+Streamlit app exposes all 11 physicochemical inputs.
 
 ## Results
 
-Run `python train.py` locally to generate metrics for your environment. Metrics
-are intentionally not hard-coded here: they depend on the downloaded dataset,
-scikit-learn version, and split. The command prints holdout MAE/RMSE/R² and
-cross-validation scores.
+The final executed run (`python -m src.train`, 2026-09-23) produced:
+
+| Model / split | MAE | MSE | RMSE | R² |
+|---|---:|---:|---:|---:|
+| Tuned RF holdout | 0.4195 | 0.3216 | 0.5671 | 0.5016 |
+| 5-fold Ridge CV | 0.5070 | 0.4287 | 0.6536 | 0.3425 |
+| LinearRegression CV | 0.5070 | 0.4288 | 0.6536 | 0.3424 |
+| RandomForest CV | 0.4144 | 0.3296 | 0.5737 | 0.4938 |
+| GradientBoosting CV | 0.4755 | 0.3819 | 0.6175 | 0.4136 |
+
+The selected tuned RF parameters were `n_estimators=250`, `max_depth=None`,
+and `min_samples_leaf=1`. Optional classifier holdout metrics were accuracy
+0.6813, macro precision 0.4392, macro recall 0.3933, and macro F1 0.4095;
+the confusion matrix is returned by `train_classifier`.
+
+Limitations: this is a small, imbalanced sensory-label dataset; scores are
+not laboratory measurements, causal claims, or purchasing advice. The random
+split does not represent temporal or producer-level generalization, and rare
+quality classes make classification difficult. Results vary with dependency
+versions and source availability.
 
 ## Citation and license
 
