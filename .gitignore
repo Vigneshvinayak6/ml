@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+data/*.csv
+models/*.joblib
+reports/figures/
+.streamlit/
